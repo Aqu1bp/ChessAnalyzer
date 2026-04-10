@@ -1,4 +1,4 @@
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useAppStore } from '../stores/appStore';
@@ -12,7 +12,10 @@ export default function HomeScreen() {
     reset();
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      // TODO: show alert directing user to Settings
+      Alert.alert(
+        'Camera Permission Required',
+        'Please enable camera access in Settings to scan chess boards.',
+      );
       return;
     }
 

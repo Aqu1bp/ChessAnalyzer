@@ -52,8 +52,10 @@ export default function EvalBar({
     });
   }, [score, wdl, fillPercent]);
 
+  // Compute bar height minus label area (~24px for label container)
+  const barHeight = height - 28;
   const whiteFillStyle = useAnimatedStyle(() => ({
-    height: `${fillPercent.value}%`,
+    height: (fillPercent.value / 100) * barHeight,
   }));
 
   const scoreLabel = score ? formatScore(score) : '0.00';
