@@ -34,6 +34,10 @@ export class StockfishWebView {
   private _restartRequested = false;
   private _initPromise: Promise<void> | null = null;
 
+  // Resolver for init() to wait until handshake completes
+  private _initResolver: (() => void) | null = null;
+  private _initRejecter: ((err: Error) => void) | null = null;
+
   constructor(webViewRef: RefObject<WebView | null>) {
     this.webViewRef = webViewRef;
   }
@@ -117,12 +121,24 @@ export class StockfishWebView {
     }
   }
 
-  private async _doInit(): Promise<void> {
+  private _doInit(): Promise<void> {
     // The WebView loads the HTML which auto-inits the WASM engine.
-    // We wait for the __ENGINE_READY__ message, then perform UCI handshake.
-    // The __ENGINE_READY__ message triggers performUciHandshake(),
-    // so we just need to wait for readyok to complete.
+    // __ENGINE_READY__ triggers performUciHandshake(), which resolves this promise.
     this.setStatus('loading');
+
+    return new Promise<void>((resolve, reject) => {
+      this._initResolver = resolve;
+      this._initRejecter = reject;
+
+      // Timeout if engine never becomes ready
+      setTimeout(() => {
+        if (this._initResolver) {
+          this._initResolver = null;
+          this._initRejecter = null;
+          reject(new Error('Engine init timed out after 30s'));
+        }
+      }, 30000);
+    });
   }
 
   /**
@@ -147,11 +163,21 @@ export class StockfishWebView {
       this._uciReady = true;
       this.setStatus('ready');
 
+      // Resolve the init() promise
+      this._initResolver?.();
+      this._initResolver = null;
+      this._initRejecter = null;
+
       // Flush any queued commands
       this.flushQueue();
     } catch (err) {
       console.error('[StockfishWebView] UCI handshake failed:', err);
       this.setStatus('error');
+
+      // Reject the init() promise
+      this._initRejecter?.(err instanceof Error ? err : new Error(String(err)));
+      this._initResolver = null;
+      this._initRejecter = null;
     }
   }
 

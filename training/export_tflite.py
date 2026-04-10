@@ -75,12 +75,28 @@ def onnx_to_tflite(onnx_path: Path, tflite_path: Path):
 
     try:
         import onnx2tf
+        saved_model_dir = str(tflite_path.parent / "tf_saved_model")
         onnx2tf.convert(
             input_onnx_file_path=str(onnx_path),
-            output_folder_path=str(tflite_path.parent / "tf_saved_model"),
+            output_folder_path=saved_model_dir,
             non_verbose=True,
         )
-        print(f"  TFLite converted via onnx2tf: {tflite_path}")
+        # onnx2tf writes into a folder; find the .tflite file and copy it
+        import glob
+        tflite_files = glob.glob(os.path.join(saved_model_dir, "**", "*.tflite"), recursive=True)
+        if tflite_files:
+            import shutil
+            shutil.copy2(tflite_files[0], str(tflite_path))
+            print(f"  TFLite converted via onnx2tf: {tflite_path} ({Path(tflite_path).stat().st_size / 1024 / 1024:.1f} MB)")
+        else:
+            # Fallback: use TF to convert the saved model
+            import tensorflow as tf
+            converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+            converter.optimizations = [tf.lite.Optimize.DEFAULT]
+            tflite_model = converter.convert()
+            with open(tflite_path, "wb") as f:
+                f.write(tflite_model)
+            print(f"  TFLite converted via onnx2tf+TF: {tflite_path} ({len(tflite_model) / 1024 / 1024:.1f} MB)")
         return
     except ImportError:
         pass

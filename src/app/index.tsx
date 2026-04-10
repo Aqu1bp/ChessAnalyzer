@@ -8,10 +8,23 @@ export default function HomeScreen() {
   const setSourceImage = useAppStore((s) => s.setSourceImage);
   const reset = useAppStore((s) => s.reset);
 
-  const handleCameraScan = () => {
+  const handleCameraScan = async () => {
     reset();
-    // TODO: navigate to camera screen or capture inline
-    router.push('/quad-editor');
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      // TODO: show alert directing user to Settings
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 1,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setSourceImage(result.assets[0].uri, 'camera');
+      router.push('/quad-editor');
+    }
   };
 
   const handleImportImage = async () => {
