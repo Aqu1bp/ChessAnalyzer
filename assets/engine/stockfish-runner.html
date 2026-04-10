@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stockfish Runner</title>
+</head>
+<body>
+<script>
+  // Bridge between React Native WebView postMessage and Stockfish UCI engine.
+  //
+  // Communication protocol:
+  //   RN -> WebView:  window.ReactNativeWebView is injected by react-native-webview.
+  //                   RN sends UCI commands via webView.postMessage(cmd).
+  //   WebView -> RN:  We call window.ReactNativeWebView.postMessage(line) for each
+  //                   engine output line.
+
+  var engine = null;
+  var ready = false;
+  var queue = []; // commands queued before engine is ready
+
+  function sendToRN(msg) {
+    try {
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(msg);
+      }
+    } catch (e) {
+      // Silently ignore if RN bridge is not available
+    }
+  }
+
+  function initEngine() {
+    sendToRN('__ENGINE_LOADING__');
+
+    // The stockfish JS file, when loaded in a non-worker browser context with
+    // document.currentScript, exposes the factory via document.currentScript._exports.
+    // We load it as a script and then grab the factory.
+    var script = document.createElement('script');
+    script.src = 'stockfish-18-lite-single.js';
+    script.onload = function () {
+      // The script sets document.currentScript._exports to the factory function
+      // when it detects it's running in a document context.
+      // However, by the time onload fires, document.currentScript is null.
+      // We need to find the factory. The script stores it on the script element itself.
+      var factory = script._exports;
+      if (!factory) {
+        sendToRN('__ENGINE_ERROR__:Could not find Stockfish factory');
+        return;
+      }
+
+      var config = {
+        locateFile: function (file) {
+          if (file.indexOf('.wasm') !== -1) {
+            return 'stockfish-18-lite-single.wasm';
+          }
+          return file;
+        },
+        listener: function (line) {
+          sendToRN(line);
+        }
+      };
+
+      factory(config).then(function (sf) {
+        engine = sf;
+        ready = true;
+        sendToRN('__ENGINE_READY__');
+        // Flush queued commands
+        while (queue.length > 0) {
+          var cmd = queue.shift();
+          engine.processCommand(cmd);
+        }
+      }).catch(function (err) {
+        sendToRN('__ENGINE_ERROR__:' + (err.message || String(err)));
+      });
+    };
+    script.onerror = function (err) {
+      sendToRN('__ENGINE_ERROR__:Failed to load stockfish JS');
+    };
+    document.body.appendChild(script);
+  }
+
+  // Listen for messages from React Native
+  // react-native-webview sends messages as message events on document
+  document.addEventListener('message', function (event) {
+    handleCommand(event.data);
+  });
+
+  // Also listen on window (some versions of react-native-webview post to window)
+  window.addEventListener('message', function (event) {
+    handleCommand(event.data);
+  });
+
+  function handleCommand(cmd) {
+    if (typeof cmd !== 'string') return;
+    if (!ready) {
+      queue.push(cmd);
+      return;
+    }
+    if (engine && engine.processCommand) {
+      engine.processCommand(cmd);
+    }
+  }
+
+  // Start engine initialization immediately
+  initEngine();
+</script>
+</body>
+</html>
