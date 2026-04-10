@@ -39,3 +39,10 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+datasets/
+training/.venv/
+training/models/
+training/exported/
+*.tflite
+!assets/models/*.tflite
+training/__pycache__/
