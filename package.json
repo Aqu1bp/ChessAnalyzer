@@ -20,6 +20,7 @@
     "expo-router": "~6.0.23",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-fast-opencv": "^0.4.8",
     "react-native-fast-tflite": "^2.0.0",
@@ -29,6 +30,7 @@
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-vision-camera": "^4.7.3",
+    "react-native-web": "^0.21.0",
     "react-native-webview": "13.15.0",
     "zustand": "^5.0.12"
   },
