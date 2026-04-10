@@ -67,6 +67,10 @@ export default function QuadEditorScreen() {
     defaultHandles(imageAreaWidth, imageAreaWidth),
   );
 
+  // Use ref for handles so gesture callbacks don't capture stale state
+  const handlesRef = useRef(handles);
+  handlesRef.current = handles;
+
   // Track which corner is being dragged
   const activeCorner = useRef<CornerKey | null>(null);
   const startPos = useRef<Point>({ x: 0, y: 0 });
@@ -96,8 +100,9 @@ export default function QuadEditorScreen() {
     (x: number, y: number): CornerKey | null => {
       let best: CornerKey | null = null;
       let bestDist = HANDLE_HIT;
+      const currentHandles = handlesRef.current;
       for (const key of CORNER_KEYS) {
-        const h = handles[key];
+        const h = currentHandles[key];
         const dist = Math.sqrt((h.x - x) ** 2 + (h.y - y) ** 2);
         if (dist < bestDist) {
           best = key;
@@ -106,7 +111,7 @@ export default function QuadEditorScreen() {
       }
       return best;
     },
-    [handles],
+    [],
   );
 
   const panGesture = Gesture.Pan()
@@ -185,7 +190,7 @@ export default function QuadEditorScreen() {
           <Image
             source={{ uri: sourceImageUri }}
             style={{ width: imageAreaWidth, height: imageAreaHeight }}
-            resizeMode="cover"
+            resizeMode="contain"
           />
 
           {/* SVG overlay for lines and handles */}

@@ -46,3 +46,4 @@ training/exported/
 *.tflite
 !assets/models/*.tflite
 training/__pycache__/
+training/train_all.log

@@ -37,6 +37,10 @@ export class StockfishWebView {
   // Resolver for init() to wait until handshake completes
   private _initResolver: (() => void) | null = null;
   private _initRejecter: ((err: Error) => void) | null = null;
+  private _initTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  // Track if WASM engine signaled ready (may arrive before or after init())
+  private _engineReady = false;
 
   constructor(webViewRef: RefObject<WebView | null>) {
     this.webViewRef = webViewRef;
@@ -74,8 +78,11 @@ export class StockfishWebView {
     }
     if (data === '__ENGINE_READY__') {
       // WebView + WASM loaded, but UCI handshake not yet done.
-      // Start the handshake.
-      this.performUciHandshake();
+      this._engineReady = true;
+      // Only start handshake if init() has been called (resolver exists)
+      if (this._initResolver) {
+        this.performUciHandshake();
+      }
       return;
     }
     if (data.startsWith('__ENGINE_ERROR__:')) {
@@ -122,8 +129,6 @@ export class StockfishWebView {
   }
 
   private _doInit(): Promise<void> {
-    // The WebView loads the HTML which auto-inits the WASM engine.
-    // __ENGINE_READY__ triggers performUciHandshake(), which resolves this promise.
     this.setStatus('loading');
 
     return new Promise<void>((resolve, reject) => {
@@ -131,13 +136,19 @@ export class StockfishWebView {
       this._initRejecter = reject;
 
       // Timeout if engine never becomes ready
-      setTimeout(() => {
+      this._initTimeout = setTimeout(() => {
         if (this._initResolver) {
           this._initResolver = null;
           this._initRejecter = null;
+          this._initTimeout = null;
           reject(new Error('Engine init timed out after 30s'));
         }
       }, 30000);
+
+      // If __ENGINE_READY__ already arrived before init(), start handshake now
+      if (this._engineReady) {
+        this.performUciHandshake();
+      }
     });
   }
 
@@ -163,7 +174,11 @@ export class StockfishWebView {
       this._uciReady = true;
       this.setStatus('ready');
 
-      // Resolve the init() promise
+      // Clear init timeout and resolve promise
+      if (this._initTimeout) {
+        clearTimeout(this._initTimeout);
+        this._initTimeout = null;
+      }
       this._initResolver?.();
       this._initResolver = null;
       this._initRejecter = null;
@@ -213,11 +228,23 @@ export class StockfishWebView {
   /** Clean up. */
   destroy(): void {
     this._uciReady = false;
+    this._engineReady = false;
     this.commandQueue = [];
     this.lineCallback = null;
     this.statusCallback = null;
     this.uciokResolver = null;
     this.readyokResolver = null;
+    // Reject pending init promise
+    if (this._initRejecter) {
+      this._initRejecter(new Error('Engine destroyed'));
+    }
+    this._initResolver = null;
+    this._initRejecter = null;
+    this._initPromise = null;
+    if (this._initTimeout) {
+      clearTimeout(this._initTimeout);
+      this._initTimeout = null;
+    }
     this.setStatus('unloaded');
   }
 
@@ -251,6 +278,7 @@ export class StockfishWebView {
 
   /**
    * Post a raw command string to the WebView.
+   * Uses injectJavaScript instead of postMessage (which is deprecated in react-native-webview).
    */
   private postCommand(cmd: string): void {
     const webView = this.webViewRef.current;
@@ -258,7 +286,8 @@ export class StockfishWebView {
       console.warn('[StockfishWebView] No WebView ref, cannot send command:', cmd);
       return;
     }
-    webView.postMessage(cmd);
+    const escaped = JSON.stringify(cmd);
+    webView.injectJavaScript(`handleCommand(${escaped}); true;`);
   }
 
   /**

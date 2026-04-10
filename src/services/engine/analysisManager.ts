@@ -12,7 +12,6 @@
 import { Chess } from 'chess.js';
 
 import type { StockfishWebView } from './stockfishWebView';
-import { parseUciLine } from './uciParser';
 import type { UciParseResult } from './uciParser';
 import type { EngineScore, PVLine, UciInfo, WDL } from '../../types/analysis';
 
@@ -205,7 +204,8 @@ export class AnalysisManager {
       const chess = new Chess(this.currentFen);
       const sanMoves: string[] = [];
 
-      for (const uciMove of uciMoves) {
+      for (let i = 0; i < uciMoves.length; i++) {
+        const uciMove = uciMoves[i];
         const from = uciMove.slice(0, 2);
         const to = uciMove.slice(2, 4);
         const promotion = uciMove.length > 4 ? uciMove[4] : undefined;
@@ -215,12 +215,14 @@ export class AnalysisManager {
           if (result) {
             sanMoves.push(result.san);
           } else {
-            // Move failed, fall back to UCI for remaining moves
-            sanMoves.push(uciMove);
+            // Move failed — append remaining as UCI and stop
+            sanMoves.push(...uciMoves.slice(i));
+            break;
           }
         } catch {
-          // chess.js throws on illegal moves
-          sanMoves.push(uciMove);
+          // chess.js throws on illegal moves — append remaining as UCI
+          sanMoves.push(...uciMoves.slice(i));
+          break;
         }
       }
 
