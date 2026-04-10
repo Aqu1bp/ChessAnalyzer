@@ -46,11 +46,13 @@ def create_model(num_classes: int = 2, pretrained: bool = True) -> nn.Module:
     return model
 
 
-def get_transforms(input_size: int = 100):
-    """Training and validation transforms."""
+def get_transforms(input_size: int = 224):
+    """Training and validation transforms.
+
+    Uses 224x224 to match MobileNetV3 pretrained weights (ImageNet resolution).
+    """
     train_transform = transforms.Compose([
         transforms.Resize((input_size, input_size)),
-        transforms.RandomHorizontalFlip(p=0.3),
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
@@ -130,24 +132,24 @@ def main():
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    train_transform, val_transform = get_transforms(input_size=100)
+    train_transform, val_transform = get_transforms(input_size=224)
 
-    # Load full dataset with train transform
-    full_dataset = datasets.ImageFolder(str(data_dir), transform=train_transform)
-    class_names = full_dataset.classes
+    # Create two separate ImageFolder instances to avoid shared .dataset corruption
+    train_full = datasets.ImageFolder(str(data_dir), transform=train_transform)
+    val_full = datasets.ImageFolder(str(data_dir), transform=val_transform)
+    class_names = train_full.classes
     print(f"Classes: {class_names}")
-    print(f"Total samples: {len(full_dataset)}")
+    print(f"Total samples: {len(train_full)}")
 
-    # Split into train/val
-    val_size = int(len(full_dataset) * args.val_split)
-    train_size = len(full_dataset) - val_size
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        full_dataset, [train_size, val_size],
-        generator=torch.Generator().manual_seed(42),
-    )
+    # Generate the same split indices for both
+    val_size = int(len(train_full) * args.val_split)
+    train_size = len(train_full) - val_size
+    indices = torch.randperm(len(train_full), generator=torch.Generator().manual_seed(42)).tolist()
+    train_indices = indices[:train_size]
+    val_indices = indices[train_size:]
 
-    # Override val transform
-    val_dataset.dataset = datasets.ImageFolder(str(data_dir), transform=val_transform)
+    train_dataset = torch.utils.data.Subset(train_full, train_indices)
+    val_dataset = torch.utils.data.Subset(val_full, val_indices)
 
     print(f"Train: {train_size}, Val: {val_size}")
 

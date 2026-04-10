@@ -107,12 +107,12 @@ def crop_squares(
     occupancy_dir: Path,
     pieces_dir: Path,
     prefix: str,
-    piece_crop_height_ratio: float = 2.0,
 ):
     """Crop individual squares from a rendered board image.
 
-    For occupancy: 100x100 square crops
-    For pieces: 100x200 rectangular crops (extending upward)
+    For SVG renders, pieces are drawn entirely within their square,
+    so both occupancy and piece crops use the same square region.
+    Occupancy: 100x100, Piece: 100x100 (same crop, different output size).
     """
     w, h = board_img.size
     sq_w = w / 8
@@ -122,7 +122,6 @@ def crop_squares(
         rank = 7 - chess.square_rank(sq)  # SVG renders rank 8 at top
         file = chess.square_file(sq)
 
-        # Square crop (for occupancy)
         left = int(file * sq_w)
         top = int(rank * sq_h)
         right = int((file + 1) * sq_w)
@@ -133,27 +132,20 @@ def crop_squares(
         piece = board.piece_at(sq)
 
         # Save occupancy crop
-        if piece is None:
-            label = "empty"
-        else:
-            label = "occupied"
-
+        label = "occupied" if piece is not None else "empty"
         occ_path = occupancy_dir / label / f"{prefix}_sq{sq}.png"
         sq_crop.save(occ_path)
 
         # Save piece crop (only for occupied squares)
         if piece is not None:
-            # Piece crop: extend upward to capture piece height
-            piece_top = max(0, int(top - sq_h * (piece_crop_height_ratio - 1)))
-            piece_crop = board_img.crop((left, piece_top, right, bottom))
-            piece_crop = piece_crop.resize((100, 200), Image.LANCZOS)
-
+            # For SVG renders, the piece is within the square itself.
+            # Save the same square crop for piece classification.
             color_char = "w" if piece.color == chess.WHITE else "b"
             type_char = piece.symbol().upper()
             piece_label = f"{color_char}{type_char}"
 
             piece_path = pieces_dir / piece_label / f"{prefix}_sq{sq}.png"
-            piece_crop.save(piece_path)
+            sq_crop.save(piece_path)
 
 
 def main():

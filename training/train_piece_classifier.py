@@ -51,7 +51,6 @@ def get_transforms():
     # MobileNetV3 expects 224x224; we resize the 100x200 crops
     train_transform = transforms.Compose([
         transforms.Resize((224, 224)),
-        transforms.RandomHorizontalFlip(p=0.3),
         transforms.ColorJitter(brightness=0.25, contrast=0.25, saturation=0.15, hue=0.05),
         transforms.RandomRotation(5),
         transforms.ToTensor(),
@@ -135,30 +134,30 @@ def main():
 
     train_transform, val_transform = get_transforms()
 
-    # Load dataset
-    full_dataset = datasets.ImageFolder(str(data_dir), transform=train_transform)
-    class_names = full_dataset.classes
+    # Create two separate ImageFolder instances to avoid shared .dataset corruption
+    train_full = datasets.ImageFolder(str(data_dir), transform=train_transform)
+    val_full = datasets.ImageFolder(str(data_dir), transform=val_transform)
+    class_names = train_full.classes
     print(f"Classes ({len(class_names)}): {class_names}")
-    print(f"Total samples: {len(full_dataset)}")
+    print(f"Total samples: {len(train_full)}")
 
     # Print class distribution
     class_counts = {}
-    for _, label in full_dataset.samples:
+    for _, label in train_full.samples:
         name = class_names[label]
         class_counts[name] = class_counts.get(name, 0) + 1
     for name, count in sorted(class_counts.items()):
         print(f"  {name}: {count}")
 
-    # Split
-    val_size = int(len(full_dataset) * args.val_split)
-    train_size = len(full_dataset) - val_size
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        full_dataset, [train_size, val_size],
-        generator=torch.Generator().manual_seed(42),
-    )
+    # Generate the same split indices for both
+    val_size = int(len(train_full) * args.val_split)
+    train_size = len(train_full) - val_size
+    indices = torch.randperm(len(train_full), generator=torch.Generator().manual_seed(42)).tolist()
+    train_indices = indices[:train_size]
+    val_indices = indices[train_size:]
 
-    # Override val transform
-    val_dataset.dataset = datasets.ImageFolder(str(data_dir), transform=val_transform)
+    train_dataset = torch.utils.data.Subset(train_full, train_indices)
+    val_dataset = torch.utils.data.Subset(val_full, val_indices)
 
     print(f"Train: {train_size}, Val: {val_size}")
 

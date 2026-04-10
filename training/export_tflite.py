@@ -6,6 +6,9 @@ The TFLite files are the artifacts that get bundled into the mobile app.
 """
 
 import argparse
+import glob
+import os
+import shutil
 from pathlib import Path
 
 import torch
@@ -85,7 +88,6 @@ def onnx_to_tflite(onnx_path: Path, tflite_path: Path):
         import glob
         tflite_files = glob.glob(os.path.join(saved_model_dir, "**", "*.tflite"), recursive=True)
         if tflite_files:
-            import shutil
             shutil.copy2(tflite_files[0], str(tflite_path))
             print(f"  TFLite converted via onnx2tf: {tflite_path} ({Path(tflite_path).stat().st_size / 1024 / 1024:.1f} MB)")
         else:
@@ -152,8 +154,8 @@ def main():
         onnx_path = output_dir / "occupancy_classifier.onnx"
         tflite_path = output_dir / "occupancy_classifier.tflite"
 
-        # Input: batch x 3 x 100 x 100
-        export_to_onnx(model, (1, 3, 100, 100), onnx_path)
+        # Input: batch x 3 x 224 x 224 (matches training transforms)
+        export_to_onnx(model, (1, 3, 224, 224), onnx_path)
         onnx_to_tflite(onnx_path, tflite_path)
     else:
         print(f"Skipping occupancy: {occ_pth} not found")
