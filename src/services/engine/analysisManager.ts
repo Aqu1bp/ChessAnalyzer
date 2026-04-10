@@ -109,13 +109,16 @@ export class AnalysisManager {
     this.flushPendingUpdate();
   }
 
-  /** Clean up timers and state. */
+  /** Clean up timers, callbacks, and state. */
   destroy(): void {
     this.stopAnalysis();
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
+    // Unregister line callback to prevent stale references
+    this.engine.onLine(() => {});
+    this.callbacks = {};
   }
 
   /**
