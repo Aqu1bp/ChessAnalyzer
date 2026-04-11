@@ -36,7 +36,7 @@
     // document.currentScript, exposes the factory via document.currentScript._exports.
     // We load it as a script and then grab the factory.
     var script = document.createElement('script');
-    script.src = 'stockfish-18-lite-single.js';
+    script.src = 'stockfish-18-lite-single.bundle';
     script.onload = function () {
       // The script sets document.currentScript._exports to the factory function
       // when it detects it's running in a document context.
