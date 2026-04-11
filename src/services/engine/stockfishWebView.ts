@@ -41,6 +41,7 @@ export class StockfishWebView {
 
   // Track if WASM engine signaled ready (may arrive before or after init())
   private _engineReady = false;
+  private _handshakeStarted = false;
 
   constructor(webViewRef: RefObject<WebView | null>) {
     this.webViewRef = webViewRef;
@@ -80,15 +81,27 @@ export class StockfishWebView {
       // WebView + WASM loaded, but UCI handshake not yet done.
       this._engineReady = true;
       // Only start handshake if init() has been called (resolver exists)
-      if (this._initResolver) {
-        this.performUciHandshake();
+      if (this._initResolver && !this._handshakeStarted) {
+        this._handshakeStarted = true;
+        void this.performUciHandshake();
       }
       return;
     }
     if (data.startsWith('__ENGINE_ERROR__:')) {
       const errorMsg = data.slice('__ENGINE_ERROR__:'.length);
       console.error('[StockfishWebView] Engine error:', errorMsg);
+      this._uciReady = false;
+      this._engineReady = false;
+      this._handshakeStarted = false;
       this.setStatus('error');
+      if (this._initTimeout) {
+        clearTimeout(this._initTimeout);
+        this._initTimeout = null;
+      }
+      this._initRejecter?.(new Error(errorMsg));
+      this._initResolver = null;
+      this._initRejecter = null;
+      this._initPromise = null;
       return;
     }
 
@@ -117,6 +130,10 @@ export class StockfishWebView {
    *   isready -> wait readyok
    */
   async init(): Promise<void> {
+    if (this._uciReady) {
+      this.setStatus('ready');
+      return;
+    }
     if (this._initPromise) {
       return this._initPromise;
     }
@@ -129,6 +146,11 @@ export class StockfishWebView {
   }
 
   private _doInit(): Promise<void> {
+    if (this._uciReady) {
+      this.setStatus('ready');
+      return Promise.resolve();
+    }
+
     this.setStatus('loading');
 
     return new Promise<void>((resolve, reject) => {
@@ -146,8 +168,9 @@ export class StockfishWebView {
       }, 30000);
 
       // If __ENGINE_READY__ already arrived before init(), start handshake now
-      if (this._engineReady) {
-        this.performUciHandshake();
+      if (this._engineReady && !this._handshakeStarted) {
+        this._handshakeStarted = true;
+        void this.performUciHandshake();
       }
     });
   }
@@ -172,6 +195,7 @@ export class StockfishWebView {
 
       // Handshake complete
       this._uciReady = true;
+      this._handshakeStarted = false;
       this.setStatus('ready');
 
       // Clear init timeout and resolve promise
@@ -187,9 +211,16 @@ export class StockfishWebView {
       this.flushQueue();
     } catch (err) {
       console.error('[StockfishWebView] UCI handshake failed:', err);
+      this._uciReady = false;
+      this._engineReady = false;
+      this._handshakeStarted = false;
       this.setStatus('error');
 
       // Reject the init() promise
+      if (this._initTimeout) {
+        clearTimeout(this._initTimeout);
+        this._initTimeout = null;
+      }
       this._initRejecter?.(err instanceof Error ? err : new Error(String(err)));
       this._initResolver = null;
       this._initRejecter = null;
@@ -229,6 +260,7 @@ export class StockfishWebView {
   destroy(): void {
     this._uciReady = false;
     this._engineReady = false;
+    this._handshakeStarted = false;
     this.commandQueue = [];
     this.lineCallback = null;
     this.statusCallback = null;
@@ -255,7 +287,17 @@ export class StockfishWebView {
   handleCrash(): void {
     console.warn('[StockfishWebView] WebView crashed, scheduling restart');
     this._uciReady = false;
+    this._engineReady = false;
+    this._handshakeStarted = false;
     this.setStatus('error');
+    if (this._initTimeout) {
+      clearTimeout(this._initTimeout);
+      this._initTimeout = null;
+    }
+    this._initRejecter?.(new Error('Engine crashed'));
+    this._initResolver = null;
+    this._initRejecter = null;
+    this._initPromise = null;
     this._restartRequested = true;
   }
 

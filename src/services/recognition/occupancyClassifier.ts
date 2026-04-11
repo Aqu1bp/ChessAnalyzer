@@ -2,7 +2,7 @@
  * Occupancy classifier — determines if a square is empty or occupied.
  *
  * Uses a TFLite MobileNetV3-Small model loaded via react-native-fast-tflite.
- * Input: 224x224 RGB normalized square crop
+ * Input: 100x100 RGB normalized square crop
  * Output: 2-class softmax (empty, occupied)
  */
 
@@ -20,20 +20,16 @@ export interface OccupancyResult {
  * NOTE: This is a stub until TFLite models are trained and bundled.
  * The actual implementation will:
  * 1. Load the model from assets/models/occupancy_classifier.tflite
- * 2. Preprocess each crop (resize to 224x224, normalize to ImageNet stats)
+ * 2. Preprocess each crop (resize to 100x100, normalize to ImageNet stats)
  * 3. Run inference
  * 4. Return occupancy prediction + confidence per square
  */
 export async function classifyOccupancy(
   _squareCrops: ArrayBuffer[],
 ): Promise<OccupancyResult[]> {
-  // TODO: Implement when TFLite model is available
-  // Stub returns all squares as occupied with low confidence
-  // to trigger the confirmation screen
-  return _squareCrops.map(() => ({
-    occupied: true,
-    confidence: 0.5,
-  }));
+  throw new Error(
+    'Occupancy inference is not implemented in this build. Export and bundle the TFLite model before calling classifyOccupancy().',
+  );
 }
 
 /**

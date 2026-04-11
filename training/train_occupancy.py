@@ -46,10 +46,10 @@ def create_model(num_classes: int = 2, pretrained: bool = True) -> nn.Module:
     return model
 
 
-def get_transforms(input_size: int = 224):
+def get_transforms(input_size: int = 100):
     """Training and validation transforms.
 
-    Uses 224x224 to match MobileNetV3 pretrained weights (ImageNet resolution).
+    Keeps the runtime/export contract at 100x100 square crops.
     """
     train_transform = transforms.Compose([
         transforms.Resize((input_size, input_size)),
@@ -132,7 +132,7 @@ def main():
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    train_transform, val_transform = get_transforms(input_size=224)
+    train_transform, val_transform = get_transforms(input_size=100)
 
     # Create two separate ImageFolder instances to avoid shared .dataset corruption
     train_full = datasets.ImageFolder(str(data_dir), transform=train_transform)

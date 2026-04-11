@@ -62,6 +62,7 @@ interface AppState {
   setFen: (fen: string) => void;
   setEngineStatus: (status: EngineStatus) => void;
   setAnalysisStatus: (status: AnalysisStatus) => void;
+  clearAnalysis: () => void;
   updateAnalysis: (update: {
     depth?: number;
     evaluation?: EngineScore;
@@ -111,6 +112,15 @@ export const useAppStore = create<AppState>((set) => ({
   setFen: (fen) => set({ fen }),
   setEngineStatus: (status) => set({ engineStatus: status }),
   setAnalysisStatus: (status) => set({ analysisStatus: status }),
+  clearAnalysis: () =>
+    set({
+      analysisStatus: 'idle',
+      currentDepth: 0,
+      evaluation: null,
+      wdl: null,
+      bestMove: null,
+      pvLines: [],
+    }),
   updateAnalysis: (update) =>
     set((state) => ({
       currentDepth: update.depth ?? state.currentDepth,

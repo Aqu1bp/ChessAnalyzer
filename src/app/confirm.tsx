@@ -14,18 +14,21 @@ import {
   ScrollView,
   useWindowDimensions,
   Alert,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 
 import { useAppStore } from '../stores/appStore';
 import BoardSurface from '../components/board/BoardSurface';
-import { buildPiecePlacement, buildFullFen } from '../services/recognition/fenBuilder';
+import { buildFullFen, predictionsToBoard } from '../services/recognition/fenBuilder';
 import {
   validateBoard,
   inferCastlingDefaults,
+  validateFen,
   type ValidationError,
 } from '../services/recognition/boardValidator';
+import { isEnPassantPossible } from '../utils/fen';
 import type {
   BoardState,
   Piece,
@@ -77,11 +80,15 @@ export default function ConfirmScreen() {
   const { width: winWidth } = useWindowDimensions();
 
   const editableBoard = useAppStore((s) => s.editableBoard);
+  const predictions = useAppStore((s) => s.predictions);
+  const sourceImageUri = useAppStore((s) => s.sourceImageUri);
   const setEditableBoard = useAppStore((s) => s.setEditableBoard);
   const activeColor = useAppStore((s) => s.activeColor);
   const setActiveColor = useAppStore((s) => s.setActiveColor);
   const castling = useAppStore((s) => s.castling);
   const setCastling = useAppStore((s) => s.setCastling);
+  const enPassant = useAppStore((s) => s.enPassant);
+  const setEnPassant = useAppStore((s) => s.setEnPassant);
   const boardFlipped = useAppStore((s) => s.boardFlipped);
   const flipBoard = useAppStore((s) => s.flipBoard);
   const setFen = useAppStore((s) => s.setFen);
@@ -90,34 +97,48 @@ export default function ConfirmScreen() {
 
   const boardSize = Math.min(winWidth - 32, 360);
 
-  // Initialize with starting position if board is empty (all null)
+  const recognitionBackfillNeeded =
+    predictions.length === 64 && editableBoard.every((sq) => sq === null);
+  const manualEntryMode =
+    predictions.length === 0 && editableBoard.every((sq) => sq === null);
+
+  // Initialize board from recognition output when available.
   useEffect(() => {
-    const isEmpty = editableBoard.every((sq) => sq === null);
-    if (isEmpty) {
-      const board = startingBoard();
+    if (recognitionBackfillNeeded) {
+      const board = predictionsToBoard(predictions);
       setEditableBoard(board);
       const rights = inferCastlingDefaults(board);
       setCastling(rights);
-    } else {
-      // Infer castling from whatever board is loaded
+    } else if (!editableBoard.every((sq) => sq === null)) {
       const rights = inferCastlingDefaults(editableBoard);
       setCastling(rights);
+    } else {
+      setCastling({ K: false, Q: false, k: false, q: false });
     }
-    // Only on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [editableBoard, predictions, recognitionBackfillNeeded, setCastling, setEditableBoard]);
 
   // Compute FEN from current state
   const currentFen = useMemo(() => {
     const metadata: FenMetadata = {
       activeColor,
       castling,
-      enPassant: '-',
+      enPassant,
       halfmoveClock: 0,
       fullmoveNumber: 1,
     };
     return buildFullFen(editableBoard, metadata);
-  }, [editableBoard, activeColor, castling]);
+  }, [activeColor, castling, editableBoard, enPassant]);
+
+  const enPassantCandidates = useMemo(
+    () => isEnPassantPossible(editableBoard, activeColor),
+    [activeColor, editableBoard],
+  );
+
+  useEffect(() => {
+    if (enPassant !== '-' && !enPassantCandidates.includes(enPassant)) {
+      setEnPassant('-');
+    }
+  }, [enPassant, enPassantCandidates, setEnPassant]);
 
   const handleSquarePress = useCallback(
     (index: number) => {
@@ -139,6 +160,21 @@ export default function ConfirmScreen() {
     Alert.alert('Copied', 'FEN copied to clipboard');
   };
 
+  const handleLoadStartingPosition = () => {
+    const board = startingBoard();
+    setEditableBoard(board);
+    setCastling(inferCastlingDefaults(board));
+    setEnPassant('-');
+    setValidationErrors([]);
+  };
+
+  const handleClearBoard = () => {
+    setEditableBoard(Array(64).fill(null));
+    setCastling({ K: false, Q: false, k: false, q: false });
+    setEnPassant('-');
+    setValidationErrors([]);
+  };
+
   const toggleCastling = (key: keyof CastlingRights) => {
     setCastling({ ...castling, [key]: !castling[key] });
   };
@@ -148,6 +184,12 @@ export default function ConfirmScreen() {
     const result = validateBoard(editableBoard);
     if (!result.valid) {
       setValidationErrors(result.errors);
+      return;
+    }
+
+    const fenValidation = validateFen(currentFen);
+    if (!fenValidation.valid) {
+      setValidationErrors(fenValidation.errors);
       return;
     }
 
@@ -174,6 +216,26 @@ export default function ConfirmScreen() {
       style={styles.scrollView}
       contentContainerStyle={styles.scrollContent}
     >
+      {sourceImageUri && (
+        <View style={styles.referenceSection}>
+          <Text style={styles.sectionTitle}>Reference Image</Text>
+          <Image
+            source={{ uri: sourceImageUri }}
+            style={styles.referenceImage}
+            resizeMode="contain"
+          />
+        </View>
+      )}
+
+      {manualEntryMode && (
+        <View style={styles.infoBanner}>
+          <Text style={styles.infoBannerText}>
+            Automatic board recognition is not wired into this build yet. Use the selected image as a
+            reference and tap squares to enter the position manually.
+          </Text>
+        </View>
+      )}
+
       {/* Board */}
       <BoardSurface
         board={editableBoard}
@@ -199,6 +261,15 @@ export default function ConfirmScreen() {
       <Pressable style={styles.flipButton} onPress={flipBoard}>
         <Text style={styles.flipButtonText}>Flip Board</Text>
       </Pressable>
+
+      <View style={styles.utilityRow}>
+        <Pressable style={styles.utilityButton} onPress={handleLoadStartingPosition}>
+          <Text style={styles.utilityButtonText}>Load Start</Text>
+        </Pressable>
+        <Pressable style={styles.utilityButton} onPress={handleClearBoard}>
+          <Text style={styles.utilityButtonText}>Clear Board</Text>
+        </Pressable>
+      </View>
 
       {/* Side to move */}
       <View style={styles.section}>
@@ -270,6 +341,52 @@ export default function ConfirmScreen() {
         </View>
       </View>
 
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>En Passant</Text>
+        <View style={styles.castlingRow}>
+          <Pressable
+            style={[
+              styles.castlingToggle,
+              enPassant === '-' && styles.castlingToggleActive,
+            ]}
+            onPress={() => setEnPassant('-')}
+          >
+            <Text
+              style={[
+                styles.castlingText,
+                enPassant === '-' && styles.castlingTextActive,
+              ]}
+            >
+              None
+            </Text>
+          </Pressable>
+          {enPassantCandidates.map((square) => (
+            <Pressable
+              key={square}
+              style={[
+                styles.castlingToggle,
+                enPassant === square && styles.castlingToggleActive,
+              ]}
+              onPress={() => setEnPassant(square)}
+            >
+              <Text
+                style={[
+                  styles.castlingText,
+                  enPassant === square && styles.castlingTextActive,
+                ]}
+              >
+                {square}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {enPassantCandidates.length === 0 && (
+          <Text style={styles.helperText}>
+            No en passant square is geometrically plausible in the current position.
+          </Text>
+        )}
+      </View>
+
       {/* FEN display */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>FEN</Text>
@@ -306,6 +423,32 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingHorizontal: 8,
   },
+  referenceSection: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  referenceImage: {
+    width: '100%',
+    height: 220,
+    borderRadius: 10,
+    backgroundColor: '#1a1a2e',
+    borderWidth: 1,
+    borderColor: '#0f3460',
+  },
+  infoBanner: {
+    width: '100%',
+    backgroundColor: '#1a1a2e',
+    borderWidth: 1,
+    borderColor: '#0f3460',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+  },
+  infoBannerText: {
+    color: '#c0c0c0',
+    fontSize: 13,
+    lineHeight: 19,
+  },
   errorText: {
     color: '#ff4444',
     fontSize: 13,
@@ -323,6 +466,24 @@ const styles = StyleSheet.create({
   flipButtonText: {
     color: '#e0e0e0',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  utilityRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  utilityButton: {
+    backgroundColor: '#1a1a2e',
+    borderWidth: 1,
+    borderColor: '#0f3460',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  utilityButtonText: {
+    color: '#e0e0e0',
+    fontSize: 13,
     fontWeight: '600',
   },
   section: {
@@ -384,6 +545,12 @@ const styles = StyleSheet.create({
   },
   castlingTextActive: {
     color: '#e0e0e0',
+  },
+  helperText: {
+    color: '#8892b0',
+    fontSize: 12,
+    marginTop: 8,
+    lineHeight: 18,
   },
   fenRow: {
     flexDirection: 'row',

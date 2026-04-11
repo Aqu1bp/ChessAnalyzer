@@ -47,17 +47,17 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>Chess Scanner</Text>
       <Text style={styles.subtitle}>
-        Scan a chess board to get instant analysis
+        Capture a board image, confirm the position, and run Stockfish analysis
       </Text>
 
       <Pressable style={styles.button} onPress={handleCameraScan}>
         <Text style={styles.buttonText}>Camera Scan</Text>
-        <Text style={styles.buttonHint}>Point camera at a physical board</Text>
+        <Text style={styles.buttonHint}>Take a reference photo of a physical board</Text>
       </Pressable>
 
       <Pressable style={[styles.button, styles.secondaryButton]} onPress={handleImportImage}>
         <Text style={styles.buttonText}>Import Image</Text>
-        <Text style={styles.buttonHint}>Screenshot, photo, or book page</Text>
+        <Text style={styles.buttonHint}>Use a screenshot, photo, or book page as reference</Text>
       </Pressable>
     </View>
   );

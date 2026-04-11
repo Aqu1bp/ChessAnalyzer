@@ -14,7 +14,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.aqu1bp.ChessAnalyzer"
+      "bundleIdentifier": "com.aqu1bp.ChessAnalyzer",
+      "appleTeamId": "547UQBV474"
     },
     "android": {
       "adaptiveIcon": {
@@ -30,7 +31,8 @@
     },
     "scheme": "chessanalyzer",
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-asset"
     ]
   }
 }

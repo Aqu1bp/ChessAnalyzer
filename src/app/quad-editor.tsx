@@ -181,7 +181,8 @@ export default function QuadEditorScreen() {
   return (
     <GestureHandlerRootView style={styles.container}>
       <Text style={styles.instructions}>
-        Drag the corners to align with the chess board edges
+        Drag the corners to align with the board. The next screen uses this image as a reference
+        for manual position confirmation.
       </Text>
 
       {/* Image + overlay area */}

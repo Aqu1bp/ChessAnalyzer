@@ -69,6 +69,10 @@ def onnx_to_tflite(onnx_path: Path, tflite_path: Path):
 
     Requires onnx2tf or ai_edge_torch. Falls back to instructions if not available.
     """
+    saved_model_dir = tflite_path.parent / f"{tflite_path.stem}_saved_model"
+    if saved_model_dir.exists():
+        shutil.rmtree(saved_model_dir)
+
     try:
         import ai_edge_torch
         # ai_edge_torch can convert directly from PyTorch, but we go via ONNX for now
@@ -78,14 +82,12 @@ def onnx_to_tflite(onnx_path: Path, tflite_path: Path):
 
     try:
         import onnx2tf
-        saved_model_dir = str(tflite_path.parent / "tf_saved_model")
         onnx2tf.convert(
             input_onnx_file_path=str(onnx_path),
-            output_folder_path=saved_model_dir,
+            output_folder_path=str(saved_model_dir),
             non_verbose=True,
         )
         # onnx2tf writes into a folder; find the .tflite file and copy it
-        import glob
         tflite_files = glob.glob(os.path.join(saved_model_dir, "**", "*.tflite"), recursive=True)
         if tflite_files:
             shutil.copy2(tflite_files[0], str(tflite_path))
@@ -93,7 +95,7 @@ def onnx_to_tflite(onnx_path: Path, tflite_path: Path):
         else:
             # Fallback: use TF to convert the saved model
             import tensorflow as tf
-            converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+            converter = tf.lite.TFLiteConverter.from_saved_model(str(saved_model_dir))
             converter.optimizations = [tf.lite.Optimize.DEFAULT]
             tflite_model = converter.convert()
             with open(tflite_path, "wb") as f:
@@ -111,9 +113,9 @@ def onnx_to_tflite(onnx_path: Path, tflite_path: Path):
 
         onnx_model = onnx.load(str(onnx_path))
         tf_rep = prepare(onnx_model)
-        tf_rep.export_graph(str(tflite_path.parent / "tf_saved_model"))
+        tf_rep.export_graph(str(saved_model_dir))
 
-        converter = tf.lite.TFLiteConverter.from_saved_model(str(tflite_path.parent / "tf_saved_model"))
+        converter = tf.lite.TFLiteConverter.from_saved_model(str(saved_model_dir))
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
         tflite_model = converter.convert()
 
@@ -137,11 +139,19 @@ def main():
     parser = argparse.ArgumentParser(description="Export models to ONNX/TFLite")
     parser.add_argument("--models-dir", type=str, default="models", help="Directory with .pth files")
     parser.add_argument("--output", type=str, default="exported", help="Output directory")
+    parser.add_argument(
+        "--bundle-dir",
+        type=str,
+        default="../assets/models",
+        help="Directory to copy TFLite artifacts into for the mobile app",
+    )
     args = parser.parse_args()
 
     models_dir = Path(args.models_dir)
     output_dir = Path(args.output)
+    bundle_dir = Path(args.bundle_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    bundle_dir.mkdir(parents=True, exist_ok=True)
 
     # Export occupancy model
     occ_pth = models_dir / "occupancy_best.pth"
@@ -154,8 +164,8 @@ def main():
         onnx_path = output_dir / "occupancy_classifier.onnx"
         tflite_path = output_dir / "occupancy_classifier.tflite"
 
-        # Input: batch x 3 x 224 x 224 (matches training transforms)
-        export_to_onnx(model, (1, 3, 224, 224), onnx_path)
+        # Input: batch x 3 x 100 x 100 (matches occupancy training transforms)
+        export_to_onnx(model, (1, 3, 100, 100), onnx_path)
         onnx_to_tflite(onnx_path, tflite_path)
     else:
         print(f"Skipping occupancy: {occ_pth} not found")
@@ -189,6 +199,30 @@ def main():
     for f in output_dir.iterdir():
         size_mb = f.stat().st_size / 1024 / 1024
         print(f"  {f.name}: {size_mb:.1f} MB")
+
+    copied = []
+    for filename in [
+        "occupancy_classifier.tflite",
+        "piece_classifier.tflite",
+        "occupancy_classes.txt",
+        "piece_classes.txt",
+    ]:
+        source = output_dir / filename
+        if not source.exists():
+            source = models_dir / filename
+        if source.exists():
+            target = bundle_dir / filename
+            shutil.copy2(source, target)
+            copied.append(target)
+
+    if copied:
+        print("\n--- Bundled For App ---")
+        for path in copied:
+          size_mb = path.stat().st_size / 1024 / 1024
+          print(f"  {path}: {size_mb:.1f} MB")
+    else:
+        print("\n--- Bundled For App ---")
+        print("  No TFLite artifacts were produced, so nothing was copied into assets/models.")
 
 
 if __name__ == "__main__":

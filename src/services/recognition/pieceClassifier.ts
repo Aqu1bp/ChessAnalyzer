@@ -43,10 +43,7 @@ export interface PieceResult {
 export async function classifyPieces(
   _occupiedSquareCrops: ArrayBuffer[],
 ): Promise<PieceResult[]> {
-  // TODO: Implement when TFLite model is available
-  // Stub returns white pawns with low confidence
-  return _occupiedSquareCrops.map(() => ({
-    piece: { color: 'w' as PieceColor, type: 'p' as PieceType },
-    confidence: 0.5,
-  }));
+  throw new Error(
+    'Piece inference is not implemented in this build. Export and bundle the TFLite model before calling classifyPieces().',
+  );
 }

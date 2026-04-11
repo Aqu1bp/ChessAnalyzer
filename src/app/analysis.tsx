@@ -28,13 +28,11 @@ import Animated, {
 import { useAppStore } from '../stores/appStore';
 import BoardSurface from '../components/board/BoardSurface';
 import EvalBar from '../components/analysis/EvalBar';
+import { useStockfish } from '../components/analysis/StockfishProvider';
+import { AnalysisManager } from '../services/engine/analysisManager';
 import { formatScore } from '../utils/evalUtils';
 import { parseFen } from '../utils/fen';
 import type { PVLine } from '../types/analysis';
-
-// TODO: Re-enable when Stockfish WebView asset loading is fixed
-// import { useStockfish } from '../components/analysis/StockfishProvider';
-// import { AnalysisManager } from '../services/engine/analysisManager';
 
 /** Parse a UCI move string "e2e4" to { from, to } board indices. */
 function uciMoveToIndices(uci: string): { from: number; to: number } | null {
@@ -59,9 +57,8 @@ function uciMoveToIndices(uci: string): { from: number; to: number } | null {
 export default function AnalysisScreen() {
   const router = useRouter();
   const { width: winWidth } = useWindowDimensions();
-  // TODO: Re-enable when Stockfish WebView asset loading is fixed
-  // const engine = useStockfish();
-  const managerRef = useRef<any>(null);
+  const engine = useStockfish();
+  const managerRef = useRef<AnalysisManager | null>(null);
 
   // Store state
   const fen = useAppStore((s) => s.fen);
@@ -73,8 +70,10 @@ export default function AnalysisScreen() {
   const targetDepth = useAppStore((s) => s.targetDepth);
   const boardFlipped = useAppStore((s) => s.boardFlipped);
   const flipBoard = useAppStore((s) => s.flipBoard);
+  const setEngineStatus = useAppStore((s) => s.setEngineStatus);
   const updateAnalysis = useAppStore((s) => s.updateAnalysis);
   const setAnalysisStatus = useAppStore((s) => s.setAnalysisStatus);
+  const clearAnalysis = useAppStore((s) => s.clearAnalysis);
   const reset = useAppStore((s) => s.reset);
 
   // Parse board from FEN
@@ -116,14 +115,69 @@ export default function AnalysisScreen() {
     width: `${depthProgress.value}%`,
   }));
 
-  // TODO: Re-enable when Stockfish WebView asset loading is fixed
-  // Engine analysis is disabled until the asset loading spike is completed.
-  // The analysis screen still shows the board, FEN, and UI — just no live engine output.
   useEffect(() => {
     if (!fen) return;
-    setAnalysisStatus('idle');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fen]);
+
+    clearAnalysis();
+    setAnalysisStatus('initializing');
+    engine.onStatusChange(setEngineStatus);
+
+    const manager = new AnalysisManager(engine);
+    managerRef.current = manager;
+
+    manager.setCallbacks({
+      onDepthUpdate: (update) => {
+        setAnalysisStatus('running');
+        updateAnalysis({
+          depth: update.depth,
+          evaluation: update.evaluation,
+          wdl: update.wdl,
+          pvLines: update.pvLines,
+        });
+      },
+      onBestMove: (move) => {
+        updateAnalysis({ bestMove: move });
+        setAnalysisStatus('stopped');
+      },
+      onError: (error) => {
+        setAnalysisStatus('error');
+        Alert.alert('Analysis Error', error);
+      },
+    });
+
+    let cancelled = false;
+
+    const start = async () => {
+      try {
+        await engine.init();
+        if (cancelled) return;
+        manager.startAnalysis(fen, targetDepth);
+      } catch (error) {
+        if (cancelled) return;
+        setAnalysisStatus('error');
+        Alert.alert(
+          'Engine Error',
+          error instanceof Error ? error.message : 'Failed to initialize Stockfish.',
+        );
+      }
+    };
+
+    void start();
+
+    return () => {
+      cancelled = true;
+      manager.destroy();
+      managerRef.current = null;
+    };
+  }, [
+    clearAnalysis,
+    engine,
+    fen,
+    setAnalysisStatus,
+    setEngineStatus,
+    targetDepth,
+    updateAnalysis,
+  ]);
 
   const handleNewScan = () => {
     if (managerRef.current) {
