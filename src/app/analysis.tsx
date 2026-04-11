@@ -26,13 +26,15 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useAppStore } from '../stores/appStore';
-import { useStockfish } from '../components/analysis/StockfishProvider';
 import BoardSurface from '../components/board/BoardSurface';
 import EvalBar from '../components/analysis/EvalBar';
-import { AnalysisManager } from '../services/engine/analysisManager';
 import { formatScore } from '../utils/evalUtils';
 import { parseFen } from '../utils/fen';
 import type { PVLine } from '../types/analysis';
+
+// TODO: Re-enable when Stockfish WebView asset loading is fixed
+// import { useStockfish } from '../components/analysis/StockfishProvider';
+// import { AnalysisManager } from '../services/engine/analysisManager';
 
 /** Parse a UCI move string "e2e4" to { from, to } board indices. */
 function uciMoveToIndices(uci: string): { from: number; to: number } | null {
@@ -57,8 +59,9 @@ function uciMoveToIndices(uci: string): { from: number; to: number } | null {
 export default function AnalysisScreen() {
   const router = useRouter();
   const { width: winWidth } = useWindowDimensions();
-  const engine = useStockfish();
-  const managerRef = useRef<AnalysisManager | null>(null);
+  // TODO: Re-enable when Stockfish WebView asset loading is fixed
+  // const engine = useStockfish();
+  const managerRef = useRef<any>(null);
 
   // Store state
   const fen = useAppStore((s) => s.fen);
@@ -113,42 +116,14 @@ export default function AnalysisScreen() {
     width: `${depthProgress.value}%`,
   }));
 
-  // Start analysis on mount
+  // TODO: Re-enable when Stockfish WebView asset loading is fixed
+  // Engine analysis is disabled until the asset loading spike is completed.
+  // The analysis screen still shows the board, FEN, and UI — just no live engine output.
   useEffect(() => {
-    if (!fen || !engine) return;
-
-    const manager = new AnalysisManager(engine);
-    managerRef.current = manager;
-
-    manager.setCallbacks({
-      onDepthUpdate: (update) => {
-        updateAnalysis({
-          depth: update.depth,
-          evaluation: update.evaluation,
-          wdl: update.wdl,
-          pvLines: update.pvLines,
-        });
-      },
-      onBestMove: (move) => {
-        updateAnalysis({ bestMove: move });
-        setAnalysisStatus('stopped');
-      },
-      onError: (error) => {
-        console.error('[Analysis] Error:', error);
-        setAnalysisStatus('error');
-      },
-    });
-
-    setAnalysisStatus('running');
-    manager.startAnalysis(fen, targetDepth);
-
-    return () => {
-      manager.destroy();
-      managerRef.current = null;
-    };
-    // Only run on mount/unmount and when fen changes
+    if (!fen) return;
+    setAnalysisStatus('idle');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fen, engine]);
+  }, [fen]);
 
   const handleNewScan = () => {
     if (managerRef.current) {
